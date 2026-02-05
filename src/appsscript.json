@@ -1,0 +1,22 @@
+{
+  "timeZone": "Europe/Rome",
+  "dependencies": {
+    "enabledAdvancedServices": [
+      {
+        "userSymbol": "Classroom",
+        "version": "v1",
+        "serviceId": "classroom"
+      }
+    ]
+  },
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "oauthScopes": [
+    "https://www.googleapis.com/auth/classroom.courses.readonly",
+    "https://www.googleapis.com/auth/classroom.courseworkmaterials",
+    "https://www.googleapis.com/auth/classroom.topics",
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/script.external_request"
+  ]
+}
