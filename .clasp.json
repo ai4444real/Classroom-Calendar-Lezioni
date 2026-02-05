@@ -1,16 +1,5 @@
 {
-  "scriptId": "10BYBFw1tjko08-BiMdLNG30WF-qpRuPwSanfKqxknQBts7ANNDNkl-qQ",
+  "scriptId": "1NkVGoqD2Ry3iW0v3wMxZAafBRvEE4wRyx6_MXNoJyuOa--a3KwAdw3jf",
   "rootDir": "src",
-  "scriptExtensions": [
-    ".js",
-    ".gs"
-  ],
-  "htmlExtensions": [
-    ".html"
-  ],
-  "jsonExtensions": [
-    ".json"
-  ],
-  "filePushOrder": [],
-  "skipSubdirectories": false
+  "parentId": "147coiepFXm5S9ZbjkeiRqT4Nm8qkPsemqAIw8-lQUFo"
 }

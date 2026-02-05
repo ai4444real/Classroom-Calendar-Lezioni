@@ -6,6 +6,11 @@
         "userSymbol": "Classroom",
         "version": "v1",
         "serviceId": "classroom"
+      },
+      {
+        "userSymbol": "Drive",
+        "version": "v3",
+        "serviceId": "drive"
       }
     ]
   },
@@ -17,6 +22,7 @@
     "https://www.googleapis.com/auth/classroom.topics",
     "https://www.googleapis.com/auth/calendar",
     "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/script.external_request"
   ]
 }
