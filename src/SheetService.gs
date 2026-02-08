@@ -105,24 +105,43 @@ function getLesson(lessonId) {
  * @returns {Object|null} Lesson object o null se selezione non valida
  */
 function getLessonBySelectedRow() {
+  const lessons = getLessonsBySelectedRows();
+  return lessons.length > 0 ? lessons[0] : null;
+}
+
+/**
+ * Ottiene le lezioni dalle righe selezionate (supporta range)
+ * @returns {Object[]} Array di Lesson objects (può essere vuoto)
+ */
+function getLessonsBySelectedRows() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
 
-  // Verifica che siamo nel foglio Lessons
+  // Verifica che siamo nel foglio Lezioni
   if (sheet.getName() !== CONFIG.SHEETS.LESSONS) {
-    return null;
+    return [];
   }
 
-  const row = SpreadsheetApp.getActiveRange().getRow();
+  const range = SpreadsheetApp.getActiveRange();
+  const startRow = range.getRow();
+  const numRows = range.getNumRows();
 
   // Ignora riga intestazione
-  if (row < 2) {
-    return null;
+  if (startRow < 2) {
+    return [];
   }
 
   const lessons = getLessons();
-  const lesson = lessons.find(l => l._rowIndex === row);
+  const selectedLessons = [];
 
-  return lesson || null;
+  for (let row = startRow; row < startRow + numRows; row++) {
+    const lesson = lessons.find(l => l._rowIndex === row);
+    // Salta righe vuote (senza lesson_id)
+    if (lesson && lesson.lesson_id) {
+      selectedLessons.push(lesson);
+    }
+  }
+
+  return selectedLessons;
 }
 
 /**

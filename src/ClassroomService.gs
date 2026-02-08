@@ -157,9 +157,13 @@ function buildMaterialDescriptionPost_(lesson, existingDescription) {
  */
 function formatDateForTitle_(date) {
   if (date instanceof Date) {
-    return Utilities.formatDate(date, 'Europe/Rome', 'yyyy-MM-dd');
+    return Utilities.formatDate(date, 'Europe/Rome', 'dd.MM.yyyy');
   }
-  // Se è già stringa, restituisci così
+  // Se è già stringa, prova a convertirla
+  const d = new Date(date);
+  if (!isNaN(d.getTime())) {
+    return Utilities.formatDate(d, 'Europe/Rome', 'dd.MM.yyyy');
+  }
   return String(date);
 }
 

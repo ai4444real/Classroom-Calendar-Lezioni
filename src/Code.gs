@@ -3,12 +3,32 @@
  * Main entry point
  */
 
+// ============================================================
+// FORMULE CUSTOM
+// ============================================================
+
+/**
+ * Decodifica l'ID Classroom da base64 (quello nell'URL) a numero
+ * Uso: =DECODE_CLASSROOM_ID(A1)
+ * @param {string} encoded - ID codificato (es. "ODE4Njk5ODA2NDMw")
+ * @returns {string} ID numerico (es. "818699806430")
+ * @customfunction
+ */
+function DECODE_CLASSROOM_ID(encoded) {
+  if (!encoded) return '';
+  try {
+    return Utilities.newBlob(Utilities.base64Decode(encoded)).getDataAsString();
+  } catch (e) {
+    return 'ERRORE: ' + e.message;
+  }
+}
+
 /**
  * Crea il menu quando si apre lo Sheet
  */
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
-  ui.createMenu('Lezioni')
+  ui.createMenu('📚')
     .addItem('Crea Evento Calendario', 'createEventSelected')
     .addSeparator()
     .addItem('Pubblica PRE (Keypoints)', 'publishPreSelected')
@@ -138,30 +158,47 @@ function testReadData() {
 }
 
 /**
- * Pubblica PRE per riga selezionata
+ * Pubblica PRE per righe selezionate
  * Crea Topic (se non esiste) + Materiale con keypoints su Classroom
  */
 function publishPreSelected() {
   const ui = SpreadsheetApp.getUi();
-  const lesson = getLessonBySelectedRow();
+  const lessons = getLessonsBySelectedRows();
 
-  if (!lesson) {
-    ui.alert('Seleziona una riga nel foglio "Lessons" prima di pubblicare.');
+  if (lessons.length === 0) {
+    ui.alert('Seleziona una o più righe nel foglio "Lezioni" prima di pubblicare.');
     return;
   }
 
-  const results = publishPre(lesson);
+  // Conferma se più di 10 righe
+  if (lessons.length > 10) {
+    const confirm = ui.alert(
+      'Conferma',
+      `Stai per pubblicare PRE per ${lessons.length} lezioni. Vuoi continuare?`,
+      ui.ButtonSet.YES_NO
+    );
+    if (confirm !== ui.Button.YES) return;
+  }
+
+  const allResults = [];
+  for (const lesson of lessons) {
+    const results = publishPre(lesson);
+    allResults.push({ lessonId: lesson.lesson_id, results: results });
+  }
 
   // Mostra risultati
-  const message = results.map(r => {
-    if (r.success) {
-      return `✓ ${r.targetKey}: materiale ${r.action} (ID: ${r.materialId})`;
-    } else {
-      return `✗ ${r.targetKey}: ${r.error}`;
-    }
-  }).join('\n');
+  const message = allResults.map(lr => {
+    const details = lr.results.map(r => {
+      if (r.success) {
+        return `  ✓ ${r.targetKey}: ${r.action}`;
+      } else {
+        return `  ✗ ${r.targetKey}: ${r.error}`;
+      }
+    }).join('\n');
+    return `${lr.lessonId}:\n${details}`;
+  }).join('\n\n');
 
-  ui.alert(`Pubblicazione PRE completata:\n\n${message}`);
+  ui.alert(`Pubblicazione PRE completata (${lessons.length} lezioni):\n\n${message}`);
 }
 
 /**
@@ -271,30 +308,47 @@ function publishPreToTarget_(lesson, targetKey) {
 }
 
 /**
- * Pubblica POST per riga selezionata
- * Aggiorna Materiale esistente aggiungendo drive_folder_url
+ * Pubblica POST per righe selezionate
+ * Ricrea Materiale con tutti gli allegati dalla cartella Drive
  */
 function publishPostSelected() {
   const ui = SpreadsheetApp.getUi();
-  const lesson = getLessonBySelectedRow();
+  const lessons = getLessonsBySelectedRows();
 
-  if (!lesson) {
-    ui.alert('Seleziona una riga nel foglio "Lessons" prima di pubblicare.');
+  if (lessons.length === 0) {
+    ui.alert('Seleziona una o più righe nel foglio "Lezioni" prima di pubblicare.');
     return;
   }
 
-  const results = publishPost(lesson);
+  // Conferma se più di 10 righe
+  if (lessons.length > 10) {
+    const confirm = ui.alert(
+      'Conferma',
+      `Stai per pubblicare POST per ${lessons.length} lezioni. Vuoi continuare?`,
+      ui.ButtonSet.YES_NO
+    );
+    if (confirm !== ui.Button.YES) return;
+  }
+
+  const allResults = [];
+  for (const lesson of lessons) {
+    const results = publishPost(lesson);
+    allResults.push({ lessonId: lesson.lesson_id, results: results });
+  }
 
   // Mostra risultati
-  const message = results.map(r => {
-    if (r.success) {
-      return `✓ ${r.targetKey}: ${r.action}`;
-    } else {
-      return `✗ ${r.targetKey}: ${r.error}`;
-    }
-  }).join('\n');
+  const message = allResults.map(lr => {
+    const details = lr.results.map(r => {
+      if (r.success) {
+        return `  ✓ ${r.targetKey}: ${r.action}`;
+      } else {
+        return `  ✗ ${r.targetKey}: ${r.error}`;
+      }
+    }).join('\n');
+    return `${lr.lessonId}:\n${details}`;
+  }).join('\n\n');
 
-  ui.alert(`Pubblicazione POST completata:\n\n${message}`);
+  ui.alert(`Pubblicazione POST completata (${lessons.length} lezioni):\n\n${message}`);
 }
 
 /**
@@ -404,29 +458,46 @@ function publishPostToTarget_(lesson, targetKey) {
 // ============================================================
 
 /**
- * Crea evento calendario per riga selezionata
+ * Crea evento calendario per righe selezionate
  */
 function createEventSelected() {
   const ui = SpreadsheetApp.getUi();
-  const lesson = getLessonBySelectedRow();
+  const lessons = getLessonsBySelectedRows();
 
-  if (!lesson) {
-    ui.alert('Seleziona una riga nel foglio "Lessons" prima di creare l\'evento.');
+  if (lessons.length === 0) {
+    ui.alert('Seleziona una o più righe nel foglio "Lezioni" prima di creare gli eventi.');
     return;
   }
 
-  const results = createEvents(lesson);
+  // Conferma se più di 10 righe
+  if (lessons.length > 10) {
+    const confirm = ui.alert(
+      'Conferma',
+      `Stai per creare eventi per ${lessons.length} lezioni. Vuoi continuare?`,
+      ui.ButtonSet.YES_NO
+    );
+    if (confirm !== ui.Button.YES) return;
+  }
+
+  const allResults = [];
+  for (const lesson of lessons) {
+    const results = createEvents(lesson);
+    allResults.push({ lessonId: lesson.lesson_id, results: results });
+  }
 
   // Mostra risultati
-  const message = results.map(r => {
-    if (r.success) {
-      return `✓ ${r.targetKey}: evento ${r.action}`;
-    } else {
-      return `✗ ${r.targetKey}: ${r.error}`;
-    }
-  }).join('\n');
+  const message = allResults.map(lr => {
+    const details = lr.results.map(r => {
+      if (r.success) {
+        return `  ✓ ${r.targetKey}: ${r.action}`;
+      } else {
+        return `  ✗ ${r.targetKey}: ${r.error}`;
+      }
+    }).join('\n');
+    return `${lr.lessonId}:\n${details}`;
+  }).join('\n\n');
 
-  ui.alert(`Creazione eventi completata:\n\n${message}`);
+  ui.alert(`Creazione eventi completata (${lessons.length} lezioni):\n\n${message}`);
 }
 
 /**
