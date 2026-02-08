@@ -30,9 +30,7 @@ function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('📚')
     .addItem('Crea Evento Calendario', 'createEventSelected')
-    .addSeparator()
-    .addItem('Pubblica PRE (Keypoints)', 'publishPreSelected')
-    .addItem('Pubblica POST (Materiale)', 'publishPostSelected')
+    .addItem('Pubblica Materiale', 'publishMaterialSelected')
     .addSeparator()
     .addSubMenu(ui.createMenu('Setup & Test')
       .addItem('Crea fogli SSOT', 'setupSheets')
@@ -158,10 +156,10 @@ function testReadData() {
 }
 
 /**
- * Pubblica PRE per righe selezionate
- * Crea Topic (se non esiste) + Materiale con keypoints su Classroom
+ * Pubblica Materiale per righe selezionate
+ * Crea/ricrea Materiale con tutti i file dalla cartella Drive
  */
-function publishPreSelected() {
+function publishMaterialSelected() {
   const ui = SpreadsheetApp.getUi();
   const lessons = getLessonsBySelectedRows();
 
@@ -174,7 +172,7 @@ function publishPreSelected() {
   if (lessons.length > 10) {
     const confirm = ui.alert(
       'Conferma',
-      `Stai per pubblicare PRE per ${lessons.length} lezioni. Vuoi continuare?`,
+      `Stai per pubblicare materiale per ${lessons.length} lezioni. Vuoi continuare?`,
       ui.ButtonSet.YES_NO
     );
     if (confirm !== ui.Button.YES) return;
@@ -182,9 +180,12 @@ function publishPreSelected() {
 
   const allResults = [];
   for (const lesson of lessons) {
-    const results = publishPre(lesson);
-    allResults.push({ lessonId: lesson.lesson_id, results: results });
+    const results = publishMaterial(lesson);
+    allResults.push({ lessonId: lesson.lesson_id, rowIndex: lesson._rowIndex, results: results });
   }
+
+  // Colora celle per le pubblicazioni riuscite
+  colorMaterialCells_(allResults);
 
   // Mostra risultati
   const message = allResults.map(lr => {
@@ -198,165 +199,15 @@ function publishPreSelected() {
     return `${lr.lessonId}:\n${details}`;
   }).join('\n\n');
 
-  ui.alert(`Pubblicazione PRE completata (${lessons.length} lezioni):\n\n${message}`);
+  ui.alert(`Pubblicazione completata (${lessons.length} lezioni):\n\n${message}`);
 }
 
 /**
- * Esegue pubblicazione PRE per una lezione
+ * Esegue pubblicazione Materiale per una lezione
  * @param {Object} lesson
  * @returns {Object[]} Array di risultati per ogni target
  */
-function publishPre(lesson) {
-  const targetKeys = parseTargets(lesson.targets);
-  const results = [];
-
-  if (targetKeys.length === 0) {
-    Logger.log(`Nessun target per lezione ${lesson.lesson_id}`);
-    return [{ targetKey: '(nessuno)', success: false, error: 'Nessun target specificato' }];
-  }
-
-  for (const targetKey of targetKeys) {
-    const result = publishPreToTarget_(lesson, targetKey);
-    results.push(result);
-  }
-
-  return results;
-}
-
-/**
- * Pubblica PRE su un singolo target
- * @param {Object} lesson
- * @param {string} targetKey
- * @returns {Object} Risultato
- */
-function publishPreToTarget_(lesson, targetKey) {
-  const result = { targetKey: targetKey, success: false };
-
-  try {
-    // 1. Risolvi channel
-    const channel = getChannel(targetKey);
-    if (!channel) {
-      result.error = `Target "${targetKey}" non trovato in Channels`;
-      Logger.log(result.error);
-      return result;
-    }
-
-    const courseId = channel.classroom_course_id;
-    if (!courseId) {
-      result.error = `classroom_course_id mancante per "${targetKey}"`;
-      Logger.log(result.error);
-      return result;
-    }
-
-    // 2. Verifica se già pubblicato (idempotenza)
-    const existingTarget = getLessonTarget(lesson.lesson_id, targetKey);
-    if (existingTarget && existingTarget.classroom_material_id) {
-      // Già esiste, verifica che sia ancora presente su Classroom
-      const existingMaterial = findMaterialByMarker(courseId, lesson.lesson_id);
-      if (existingMaterial) {
-        result.success = true;
-        result.action = 'già esistente';
-        result.materialId = existingTarget.classroom_material_id;
-        Logger.log(`PRE già pubblicato per ${lesson.lesson_id} / ${targetKey}`);
-        return result;
-      }
-    }
-
-    // 3. Cerca materiale per marker (fallback se LessonTargets non aggiornato)
-    const foundMaterial = findMaterialByMarker(courseId, lesson.lesson_id);
-    if (foundMaterial) {
-      // Salva mapping e ritorna
-      saveLessonTarget({
-        lesson_id: lesson.lesson_id,
-        target_key: targetKey,
-        classroom_material_id: foundMaterial.id,
-        topic_id: foundMaterial.topicId || '',
-        published_pre_at: new Date().toISOString()
-      });
-      result.success = true;
-      result.action = 'trovato esistente';
-      result.materialId = foundMaterial.id;
-      return result;
-    }
-
-    // 4. Crea topic se necessario
-    const topicId = ensureTopic(courseId, lesson.topic);
-
-    // 5. Crea materiale
-    const materialId = createMaterial(courseId, topicId, lesson);
-
-    // 6. Salva mapping
-    saveLessonTarget({
-      lesson_id: lesson.lesson_id,
-      target_key: targetKey,
-      classroom_material_id: materialId,
-      topic_id: topicId,
-      published_pre_at: new Date().toISOString()
-    });
-
-    result.success = true;
-    result.action = 'creato';
-    result.materialId = materialId;
-    Logger.log(`PRE pubblicato: ${lesson.lesson_id} / ${targetKey} → ${materialId}`);
-
-  } catch (e) {
-    result.error = e.message;
-    Logger.log(`Errore PRE ${lesson.lesson_id} / ${targetKey}: ${e.message}`);
-  }
-
-  return result;
-}
-
-/**
- * Pubblica POST per righe selezionate
- * Ricrea Materiale con tutti gli allegati dalla cartella Drive
- */
-function publishPostSelected() {
-  const ui = SpreadsheetApp.getUi();
-  const lessons = getLessonsBySelectedRows();
-
-  if (lessons.length === 0) {
-    ui.alert('Seleziona una o più righe nel foglio "Lezioni" prima di pubblicare.');
-    return;
-  }
-
-  // Conferma se più di 10 righe
-  if (lessons.length > 10) {
-    const confirm = ui.alert(
-      'Conferma',
-      `Stai per pubblicare POST per ${lessons.length} lezioni. Vuoi continuare?`,
-      ui.ButtonSet.YES_NO
-    );
-    if (confirm !== ui.Button.YES) return;
-  }
-
-  const allResults = [];
-  for (const lesson of lessons) {
-    const results = publishPost(lesson);
-    allResults.push({ lessonId: lesson.lesson_id, results: results });
-  }
-
-  // Mostra risultati
-  const message = allResults.map(lr => {
-    const details = lr.results.map(r => {
-      if (r.success) {
-        return `  ✓ ${r.targetKey}: ${r.action}`;
-      } else {
-        return `  ✗ ${r.targetKey}: ${r.error}`;
-      }
-    }).join('\n');
-    return `${lr.lessonId}:\n${details}`;
-  }).join('\n\n');
-
-  ui.alert(`Pubblicazione POST completata (${lessons.length} lezioni):\n\n${message}`);
-}
-
-/**
- * Esegue pubblicazione POST per una lezione
- * @param {Object} lesson
- * @returns {Object[]} Array di risultati per ogni target
- */
-function publishPost(lesson) {
+function publishMaterial(lesson) {
   const targetKeys = parseTargets(lesson.targets);
   const results = [];
 
@@ -365,7 +216,7 @@ function publishPost(lesson) {
   }
 
   for (const targetKey of targetKeys) {
-    const result = publishPostToTarget_(lesson, targetKey);
+    const result = publishMaterialToTarget_(lesson, targetKey);
     results.push(result);
   }
 
@@ -373,20 +224,20 @@ function publishPost(lesson) {
 }
 
 /**
- * Pubblica POST su un singolo target
+ * Pubblica Materiale su un singolo target
  * Cancella materiale esistente e lo ricrea con tutti gli allegati
  * @param {Object} lesson
  * @param {string} targetKey
  * @returns {Object} Risultato
  */
-function publishPostToTarget_(lesson, targetKey) {
+function publishMaterialToTarget_(lesson, targetKey) {
   const result = { targetKey: targetKey, success: false };
 
   try {
     // 1. Risolvi channel
     const channel = getChannel(targetKey);
     if (!channel) {
-      result.error = `Target "${targetKey}" non trovato in Channels`;
+      result.error = `Target "${targetKey}" non trovato in Corsi`;
       return result;
     }
 
@@ -425,7 +276,7 @@ function publishPostToTarget_(lesson, targetKey) {
       Logger.log(`Materiale esistente cancellato: ${existingMaterial.id}`);
     }
 
-    // 4. Crea nuovo materiale con tutti gli allegati
+    // 4. Crea nuovo materiale con tutti gli allegati dalla cartella
     const newMaterialId = createMaterialWithAttachments(courseId, topicId, lesson);
 
     // 5. Aggiorna LessonTargets con nuovo ID
@@ -434,7 +285,7 @@ function publishPostToTarget_(lesson, targetKey) {
       target_key: targetKey,
       classroom_material_id: newMaterialId,
       topic_id: topicId,
-      published_post_at: new Date().toISOString()
+      published_at: new Date().toISOString()
     });
 
     // Conta file allegati per il messaggio
@@ -443,14 +294,36 @@ function publishPostToTarget_(lesson, targetKey) {
     result.action = existingMaterial
       ? `ricreato con ${fileCount} file`
       : `creato con ${fileCount} file`;
-    Logger.log(`POST pubblicato: ${lesson.lesson_id} / ${targetKey} → ${newMaterialId}`);
+    Logger.log(`Materiale pubblicato: ${lesson.lesson_id} / ${targetKey} → ${newMaterialId}`);
 
   } catch (e) {
     result.error = e.message;
-    Logger.log(`Errore POST ${lesson.lesson_id} / ${targetKey}: ${e.message}`);
+    Logger.log(`Errore materiale ${lesson.lesson_id} / ${targetKey}: ${e.message}`);
   }
 
   return result;
+}
+
+/**
+ * Colora le celle drive_folder_url per le pubblicazioni riuscite
+ * @param {Object[]} allResults
+ */
+function colorMaterialCells_(allResults) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.LESSONS);
+  if (!sheet) return;
+
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const folderColIndex = headers.indexOf('drive_folder_url') + 1;
+
+  if (folderColIndex === 0) return;
+
+  for (const lr of allResults) {
+    // Colora solo se almeno un target ha avuto successo
+    const anySuccess = lr.results.some(r => r.success);
+    if (anySuccess && lr.rowIndex) {
+      sheet.getRange(lr.rowIndex, folderColIndex).setBackground(CONFIG.COLORS.SUCCESS);
+    }
+  }
 }
 
 // ============================================================
@@ -482,8 +355,11 @@ function createEventSelected() {
   const allResults = [];
   for (const lesson of lessons) {
     const results = createEvents(lesson);
-    allResults.push({ lessonId: lesson.lesson_id, results: results });
+    allResults.push({ lessonId: lesson.lesson_id, rowIndex: lesson._rowIndex, results: results });
   }
+
+  // Colora celle per gli eventi creati/aggiornati
+  colorEventCells_(allResults);
 
   // Mostra risultati
   const message = allResults.map(lr => {
@@ -498,6 +374,36 @@ function createEventSelected() {
   }).join('\n\n');
 
   ui.alert(`Creazione eventi completata (${lessons.length} lezioni):\n\n${message}`);
+}
+
+/**
+ * Colora le celle date, start_time, end_time per gli eventi creati
+ * @param {Object[]} allResults
+ */
+function colorEventCells_(allResults) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.LESSONS);
+  if (!sheet) return;
+
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const dateColIndex = headers.indexOf('date') + 1;
+  const startColIndex = headers.indexOf('start_time') + 1;
+  const endColIndex = headers.indexOf('end_time') + 1;
+
+  for (const lr of allResults) {
+    // Colora solo se almeno un target ha avuto successo con "creato" o "aggiornato"
+    const anyCreated = lr.results.some(r => r.success && (r.action === 'creato' || r.action === 'aggiornato'));
+    if (anyCreated && lr.rowIndex) {
+      if (dateColIndex > 0) {
+        sheet.getRange(lr.rowIndex, dateColIndex).setBackground(CONFIG.COLORS.SUCCESS);
+      }
+      if (startColIndex > 0) {
+        sheet.getRange(lr.rowIndex, startColIndex).setBackground(CONFIG.COLORS.SUCCESS);
+      }
+      if (endColIndex > 0) {
+        sheet.getRange(lr.rowIndex, endColIndex).setBackground(CONFIG.COLORS.SUCCESS);
+      }
+    }
+  }
 }
 
 /**

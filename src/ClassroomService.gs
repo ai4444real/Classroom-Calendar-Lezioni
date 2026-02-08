@@ -105,50 +105,6 @@ function findMaterialByMarker(courseId, lessonId) {
   return null;
 }
 
-/**
- * Costruisce la descrizione del materiale per fase PRE
- * @param {Object} lesson
- * @returns {string}
- */
-function buildMaterialDescriptionPre_(lesson) {
-  const parts = [];
-
-  if (lesson.keypoints_doc_url) {
-    parts.push(`Keypoints: ${lesson.keypoints_doc_url}`);
-  }
-
-  if (lesson.zoom_url) {
-    parts.push(`Zoom: ${lesson.zoom_url}`);
-  }
-
-  // Marker per idempotenza (in fondo)
-  parts.push('');
-  parts.push(buildMarker(lesson.lesson_id));
-
-  return parts.join('\n');
-}
-
-/**
- * Costruisce la descrizione del materiale per fase POST (aggiunge drive folder)
- * @param {Object} lesson
- * @param {string} existingDescription - descrizione esistente da PRE
- * @returns {string}
- */
-function buildMaterialDescriptionPost_(lesson, existingDescription) {
-  // Rimuovi marker temporaneamente
-  const marker = buildMarker(lesson.lesson_id);
-  let desc = existingDescription.replace(marker, '').trim();
-
-  // Aggiungi drive folder se presente e non già presente
-  if (lesson.drive_folder_url && !desc.includes(lesson.drive_folder_url)) {
-    desc += `\n\nMateriale: ${lesson.drive_folder_url}`;
-  }
-
-  // Rimetti marker in fondo
-  desc += '\n\n' + marker;
-
-  return desc;
-}
 
 /**
  * Formatta la data per il titolo del materiale
@@ -167,36 +123,6 @@ function formatDateForTitle_(date) {
   return String(date);
 }
 
-/**
- * Crea un nuovo materiale nel corso
- * @param {string} courseId
- * @param {string} topicId
- * @param {Object} lesson
- * @returns {string} materialId
- */
-function createMaterial(courseId, topicId, lesson) {
-  const title = formatDateForTitle_(lesson.date);
-  const description = buildMaterialDescriptionPre_(lesson);
-
-  const material = {
-    title: title,
-    description: description,
-    topicId: topicId,
-    state: 'PUBLISHED',
-    materials: []
-  };
-
-  // Aggiungi link keypoints se presente
-  if (lesson.keypoints_doc_url) {
-    material.materials.push({
-      link: { url: lesson.keypoints_doc_url, title: 'Keypoints' }
-    });
-  }
-
-  const created = Classroom.Courses.CourseWorkMaterials.create(material, courseId);
-  Logger.log(`Materiale creato: ${created.id} - "${title}"`);
-  return created.id;
-}
 
 /**
  * Estrae l'ID della cartella da un URL Drive
@@ -322,7 +248,7 @@ function deleteMaterial(courseId, materialId) {
 }
 
 /**
- * Crea materiale con allegati (per POST)
+ * Crea materiale con allegati dalla cartella Drive
  * @param {string} courseId
  * @param {string} topicId
  * @param {Object} lesson
@@ -339,13 +265,6 @@ function createMaterialWithAttachments(courseId, topicId, lesson) {
     state: 'PUBLISHED',
     materials: []
   };
-
-  // Aggiungi link keypoints se presente
-  if (lesson.keypoints_doc_url) {
-    material.materials.push({
-      link: { url: lesson.keypoints_doc_url, title: 'Keypoints' }
-    });
-  }
 
   // Aggiungi file dalla cartella Drive
   if (lesson.drive_folder_url) {

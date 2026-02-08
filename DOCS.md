@@ -6,7 +6,7 @@
 
 ## Struttura Fogli (Google Sheet)
 
-### Corsi (ex Channels)
+### Corsi
 Mapping dei "canali di distribuzione" = corsi Classroom.
 
 | Colonna | Descrizione |
@@ -18,7 +18,7 @@ Mapping dei "canali di distribuzione" = corsi Classroom.
 
 **Nota:** `target_key` NON è il nome visibile del corso. È un codice interno stabile.
 
-### Lezioni (ex Lessons)
+### Lezioni
 Elenco lezioni da pubblicare.
 
 | Colonna | Descrizione |
@@ -30,8 +30,7 @@ Elenco lezioni da pubblicare.
 | `start_time` | Ora inizio (HH:MM) |
 | `end_time` | Ora fine (HH:MM) |
 | `targets` | Lista target separati da virgola (es. `PRACT_26A, EXAM_03`) |
-| `keypoints_doc_url` | Link al doc Keypoints (opzionale) |
-| `drive_folder_url` | Link cartella Drive con materiali (opzionale) |
+| `drive_folder_url` | Link cartella Drive con materiali |
 | `zoom_url` | Link Zoom (opzionale) |
 
 ### LessonTargets
@@ -44,28 +43,26 @@ Tabella di lavoro per idempotenza. **NON MODIFICARE MANUALMENTE.**
 | `classroom_material_id` | ID materiale creato su Classroom |
 | `calendar_event_id` | ID evento creato su Calendar |
 | `topic_id` | ID topic Classroom |
-| `published_pre_at` | Timestamp pubblicazione PRE |
-| `published_post_at` | Timestamp pubblicazione POST |
+| `published_at` | Timestamp pubblicazione |
 
 ---
 
-## Operazioni Disponibili (Menu "Lezioni")
+## Operazioni Disponibili (Menu "📚")
 
 ### Crea Evento Calendario
 - Crea evento con titolo = `event_title`, descrizione = `topic` + link Zoom
 - **Requisiti:** `date`, `start_time`, `end_time` tutti compilati
 - Se manca `calendar_id` nel corso → salta silenziosamente
 - Se manca `zoom_url` → evento senza link Zoom
+- **Feedback visivo:** celle `date`, `start_time`, `end_time` diventano verdi
 
-### Pubblica PRE (Keypoints)
+### Pubblica Materiale
 - Crea Topic su Classroom (se non esiste)
-- Crea Materiale con titolo = data, allegato = link Keypoints
-- **Non richiede** `drive_folder_url`
-
-### Pubblica POST (Materiale)
-- **Cancella e ricrea** il materiale (l'API non permette di aggiungere allegati)
-- Allega: Keypoints + tutti i file dalla cartella Drive
+- Crea Materiale con titolo = data (formato dd.MM.yyyy)
+- Allega tutti i file dalla cartella Drive indicata in `drive_folder_url`
 - **Video:** download automaticamente bloccato per gli studenti
+- Se materiale già esiste (per marker): lo cancella e ricrea
+- **Feedback visivo:** cella `drive_folder_url` diventa verde
 
 ---
 
@@ -79,25 +76,29 @@ Ogni materiale/evento contiene un marker nascosto nella descrizione:
 Lo script cerca questo marker per capire se esiste già → aggiorna invece di duplicare.
 
 ### Materiale unico su Drive
-I file restano su Drive. Classroom contiene solo link/allegati, non copie.
+I file restano su Drive. Classroom contiene solo allegati (riferimenti), non copie.
 
 ### Video protetti
-I file video (`mimeType: video/*`) hanno download/copia/stampa bloccati automaticamente. Gli studenti possono solo visualizzare. I docenti/proprietari possono comunque scaricare (limite Google).
+I file video (`mimeType: video/*`) hanno download/copia/stampa bloccati automaticamente. Gli studenti possono solo visualizzare.
 
-### POST ricrea il materiale
-L'API Classroom non permette di modificare gli allegati dopo la creazione. Quindi POST:
+### Ricreazione materiale
+L'API Classroom non permette di modificare gli allegati dopo la creazione. Quindi:
 1. Trova materiale esistente (per marker)
 2. Lo cancella
 3. Lo ricrea con tutti gli allegati aggiornati
 
 L'ID materiale cambia, ma LessonTargets viene aggiornato.
 
+### Feedback visivo
+Le celle vengono colorate di verde (#d9ead3) quando l'operazione ha successo:
+- **Evento creato:** date, start_time, end_time
+- **Materiale pubblicato:** drive_folder_url
+
 ### Campi opzionali
 | Campo mancante | Comportamento |
 |----------------|---------------|
 | `calendar_id` | Salta creazione evento |
-| `keypoints_doc_url` | Materiale senza keypoints |
-| `drive_folder_url` | POST crea materiale senza file extra |
+| `drive_folder_url` | Materiale senza allegati |
 | `zoom_url` | Evento senza link Zoom |
 | `start_time` o `end_time` | Salta creazione evento |
 
