@@ -211,12 +211,22 @@ function extractFolderId_(folderUrl) {
 
 /**
  * Blocca download/copia/stampa per un file (usato per video)
+ * - downloadRestrictions: blocca download per tutti (inclusi editor)
+ * - writersCanShare: impedisce agli editor di modificare autorizzazioni
  * @param {string} fileId
  */
 function blockDownload_(fileId) {
   try {
     Drive.Files.update(
-      { copyRequiresWriterPermission: true },
+      {
+        downloadRestrictions: {
+          itemDownloadRestriction: {
+            restrictedForWriters: true,
+            restrictedForReaders: true
+          }
+        },
+        writersCanShare: false
+      },
       fileId
     );
     Logger.log(`Download bloccato per file: ${fileId}`);
