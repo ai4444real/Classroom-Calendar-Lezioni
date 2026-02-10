@@ -168,6 +168,12 @@ function publishMaterialSelected() {
     return;
   }
 
+  const duplicates = findDuplicateLessonIds(lessons);
+  if (duplicates.length > 0) {
+    ui.alert(`Lezioni con ID duplicato: ${duplicates.join(', ')}\nCorreggi prima di procedere.`);
+    return;
+  }
+
   // Conferma se più di 10 righe
   if (lessons.length > 10) {
     const confirm = ui.alert(
@@ -184,22 +190,12 @@ function publishMaterialSelected() {
     allResults.push({ lessonId: lesson.lesson_id, rowIndex: lesson._rowIndex, results: results });
   }
 
-  // Colora celle per le pubblicazioni riuscite
-  colorMaterialCells_(allResults);
-
-  // Mostra risultati
-  const message = allResults.map(lr => {
-    const details = lr.results.map(r => {
-      if (r.success) {
-        return `  ✓ ${r.targetKey}: ${r.action}`;
-      } else {
-        return `  ✗ ${r.targetKey}: ${r.error}`;
-      }
-    }).join('\n');
-    return `${lr.lessonId}:\n${details}`;
-  }).join('\n\n');
-
-  ui.alert(`Pubblicazione completata (${lessons.length} lezioni):\n\n${message}`);
+  // Feedback visivo + report
+  showResults_(allResults, {
+    successColumns: ['drive_folder_url'],
+    successCondition: r => r.success,
+    operationLabel: 'Pubblicazione'
+  });
 }
 
 /**
@@ -304,26 +300,84 @@ function publishMaterialToTarget_(lesson, targetKey) {
   return result;
 }
 
+// ============================================================
+// FEEDBACK VISIVO (consolidato)
+// ============================================================
+
 /**
- * Colora le celle drive_folder_url per le pubblicazioni riuscite
- * @param {Object[]} allResults
+ * Mostra risultati: colora celle di successo, rich text sui target, alert
+ * Unico punto per tutto il feedback visivo post-operazione
+ * @param {Object[]} allResults - Array di {lessonId, rowIndex, results}
+ * @param {Object} options - {successColumns, successCondition, operationLabel}
  */
-function colorMaterialCells_(allResults) {
+function showResults_(allResults, options) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.LESSONS);
   if (!sheet) return;
 
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const folderColIndex = headers.indexOf('drive_folder_url') + 1;
-
-  if (folderColIndex === 0) return;
+  const targetsColIndex = headers.indexOf('targets') + 1;
 
   for (const lr of allResults) {
-    // Colora solo se almeno un target ha avuto successo
-    const anySuccess = lr.results.some(r => r.success);
-    if (anySuccess && lr.rowIndex) {
-      sheet.getRange(lr.rowIndex, folderColIndex).setBackground(CONFIG.COLORS.SUCCESS);
+    if (!lr.rowIndex) continue;
+
+    // 1. Rich text verde/rosso sui singoli target
+    if (targetsColIndex > 0) {
+      colorTargetsRichText_(sheet, lr.rowIndex, targetsColIndex, lr.results);
+    }
+
+    // 2. Sfondo verde sulle colonne di successo
+    const anySuccess = lr.results.some(options.successCondition);
+    if (anySuccess) {
+      for (const colName of options.successColumns) {
+        const colIndex = headers.indexOf(colName) + 1;
+        if (colIndex > 0) {
+          sheet.getRange(lr.rowIndex, colIndex).setBackground(CONFIG.COLORS.SUCCESS);
+        }
+      }
     }
   }
+
+  // 3. Alert riepilogativo
+  const message = allResults.map(lr => {
+    const details = lr.results.map(r => {
+      if (r.success) {
+        return `  ✓ ${r.targetKey}: ${r.action}`;
+      } else {
+        return `  ✗ ${r.targetKey}: ${r.error}`;
+      }
+    }).join('\n');
+    return `${lr.lessonId}:\n${details}`;
+  }).join('\n\n');
+
+  SpreadsheetApp.getUi().alert(
+    `${options.operationLabel} completata (${allResults.length} lezioni):\n\n${message}`
+  );
+}
+
+/**
+ * Applica rich text alla cella targets: verde per successo, rosso per errore
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} rowIndex - Riga della lezione
+ * @param {number} colIndex - Colonna targets
+ * @param {Object[]} results - Risultati per target [{targetKey, success}, ...]
+ */
+function colorTargetsRichText_(sheet, rowIndex, colIndex, results) {
+  const cell = sheet.getRange(rowIndex, colIndex);
+  const text = cell.getValue().toString();
+  if (!text) return;
+
+  const builder = SpreadsheetApp.newRichTextValue().setText(text);
+  const greenStyle = SpreadsheetApp.newTextStyle().setForegroundColor('#006100').setBold(true).build();
+  const redStyle = SpreadsheetApp.newTextStyle().setForegroundColor('#cc0000').setBold(true).build();
+
+  for (const r of results) {
+    const start = text.indexOf(r.targetKey);
+    if (start < 0) continue;
+    const end = start + r.targetKey.length;
+    builder.setTextStyle(start, end, r.success ? greenStyle : redStyle);
+  }
+
+  cell.setRichTextValue(builder.build());
 }
 
 // ============================================================
@@ -339,6 +393,12 @@ function createEventSelected() {
 
   if (lessons.length === 0) {
     ui.alert('Seleziona una o più righe nel foglio "Lezioni" prima di creare gli eventi.');
+    return;
+  }
+
+  const duplicates = findDuplicateLessonIds(lessons);
+  if (duplicates.length > 0) {
+    ui.alert(`Lezioni con ID duplicato: ${duplicates.join(', ')}\nCorreggi prima di procedere.`);
     return;
   }
 
@@ -358,52 +418,12 @@ function createEventSelected() {
     allResults.push({ lessonId: lesson.lesson_id, rowIndex: lesson._rowIndex, results: results });
   }
 
-  // Colora celle per gli eventi creati/aggiornati
-  colorEventCells_(allResults);
-
-  // Mostra risultati
-  const message = allResults.map(lr => {
-    const details = lr.results.map(r => {
-      if (r.success) {
-        return `  ✓ ${r.targetKey}: ${r.action}`;
-      } else {
-        return `  ✗ ${r.targetKey}: ${r.error}`;
-      }
-    }).join('\n');
-    return `${lr.lessonId}:\n${details}`;
-  }).join('\n\n');
-
-  ui.alert(`Creazione eventi completata (${lessons.length} lezioni):\n\n${message}`);
-}
-
-/**
- * Colora le celle date, start_time, end_time per gli eventi creati
- * @param {Object[]} allResults
- */
-function colorEventCells_(allResults) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.LESSONS);
-  if (!sheet) return;
-
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const dateColIndex = headers.indexOf('date') + 1;
-  const startColIndex = headers.indexOf('start_time') + 1;
-  const endColIndex = headers.indexOf('end_time') + 1;
-
-  for (const lr of allResults) {
-    // Colora solo se almeno un target ha avuto successo con "creato" o "aggiornato"
-    const anyCreated = lr.results.some(r => r.success && (r.action === 'creato' || r.action === 'aggiornato'));
-    if (anyCreated && lr.rowIndex) {
-      if (dateColIndex > 0) {
-        sheet.getRange(lr.rowIndex, dateColIndex).setBackground(CONFIG.COLORS.SUCCESS);
-      }
-      if (startColIndex > 0) {
-        sheet.getRange(lr.rowIndex, startColIndex).setBackground(CONFIG.COLORS.SUCCESS);
-      }
-      if (endColIndex > 0) {
-        sheet.getRange(lr.rowIndex, endColIndex).setBackground(CONFIG.COLORS.SUCCESS);
-      }
-    }
-  }
+  // Feedback visivo + report
+  showResults_(allResults, {
+    successColumns: ['date', 'start_time', 'end_time'],
+    successCondition: r => r.success && (r.action === 'creato' || r.action === 'aggiornato'),
+    operationLabel: 'Creazione eventi'
+  });
 }
 
 /**

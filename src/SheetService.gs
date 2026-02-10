@@ -160,6 +160,27 @@ function parseTargets(targetsCSV) {
 }
 
 // ============================================================
+// VALIDAZIONE
+// ============================================================
+
+/**
+ * Trova lesson_id duplicati in un array di lezioni
+ * @param {Object[]} lessons - Array di lesson objects
+ * @returns {string[]} Array di lesson_id duplicati (vuoto se nessun duplicato)
+ */
+function findDuplicateLessonIds(lessons) {
+  const seen = new Set();
+  const duplicates = new Set();
+  for (const lesson of lessons) {
+    if (seen.has(lesson.lesson_id)) {
+      duplicates.add(lesson.lesson_id);
+    }
+    seen.add(lesson.lesson_id);
+  }
+  return Array.from(duplicates);
+}
+
+// ============================================================
 // LESSON TARGETS (mapping per idempotenza)
 // ============================================================
 
