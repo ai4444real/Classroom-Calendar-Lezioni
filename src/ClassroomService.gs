@@ -279,7 +279,18 @@ function createMaterialWithAttachments(courseId, topicId, lesson) {
     }
   }
 
+  // Crea come DRAFT, poi pubblica (workaround per restrizioni API su certi corsi)
+  material.state = 'DRAFT';
   const created = Classroom.Courses.CourseWorkMaterials.create(material, courseId);
-  Logger.log(`Materiale creato con ${material.materials.length} allegati: ${created.id}`);
+  Logger.log(`Materiale creato come DRAFT con ${material.materials.length} allegati: ${created.id}`);
+
+  // Pubblica
+  Classroom.Courses.CourseWorkMaterials.patch(
+    { state: 'PUBLISHED' },
+    courseId,
+    created.id,
+    { updateMask: 'state' }
+  );
+  Logger.log(`Materiale pubblicato: ${created.id}`);
   return created.id;
 }
