@@ -60,9 +60,13 @@ function getTopics_(courseId) {
  * @returns {string} topicId
  */
 function ensureTopic(courseId, topicName) {
+  // Sanitizza: rimuovi * iniziale e spazi superflui
+  const cleanName = (topicName || '').replace(/^\*+/, '').trim();
+  if (!cleanName) return null;
+
   // Cerca topic esistente
   const topics = getTopics_(courseId);
-  const existing = topics.find(t => t.name === topicName);
+  const existing = topics.find(t => t.name === cleanName);
 
   if (existing) {
     Logger.log(`Topic "${topicName}" già esiste: ${existing.topicId}`);
@@ -70,8 +74,8 @@ function ensureTopic(courseId, topicName) {
   }
 
   // Crea nuovo topic
-  const newTopic = Classroom.Courses.Topics.create({ name: topicName }, courseId);
-  Logger.log(`Topic "${topicName}" creato: ${newTopic.topicId}`);
+  const newTopic = Classroom.Courses.Topics.create({ name: cleanName }, courseId);
+  Logger.log(`Topic "${cleanName}" creato: ${newTopic.topicId}`);
   return newTopic.topicId;
 }
 
@@ -80,29 +84,34 @@ function ensureTopic(courseId, topicName) {
 // ============================================================
 
 /**
- * Cerca un materiale esistente tramite marker nel corso
+ * Cerca tutti i materiali esistenti tramite marker nel corso (PUBLISHED + DRAFT)
  * @param {string} courseId
  * @param {string} lessonId
- * @returns {Object|null} Material object o null
+ * @returns {Object[]} Array di material objects (può essere vuoto)
  */
-function findMaterialByMarker(courseId, lessonId) {
+function findMaterialsByMarker(courseId, lessonId) {
   const marker = buildMarker(lessonId);
+  const found = [];
 
   try {
-    const response = Classroom.Courses.CourseWorkMaterials.list(courseId);
+    const response = Classroom.Courses.CourseWorkMaterials.list(courseId, {
+      courseWorkMaterialStates: ['PUBLISHED', 'DRAFT']
+    });
     const materials = response.courseWorkMaterial || [];
 
     for (const mat of materials) {
       if (mat.description && mat.description.includes(marker)) {
-        Logger.log(`Materiale trovato con marker ${marker}: ${mat.id}`);
-        return mat;
+        found.push(mat);
       }
+    }
+    if (found.length > 0) {
+      Logger.log(`Trovati ${found.length} materiali con marker ${marker}`);
     }
   } catch (e) {
     Logger.log(`Errore ricerca materiale: ${e.message}`);
   }
 
-  return null;
+  return found;
 }
 
 
@@ -137,8 +146,7 @@ function extractFolderId_(folderUrl) {
 
 /**
  * Blocca download/copia/stampa per un file (usato per video)
- * - downloadRestrictions: blocca download per tutti (inclusi editor)
- * - writersCanShare: impedisce agli editor di modificare autorizzazioni
+ * downloadRestrictions: blocca download/copia/stampa per tutti (inclusi editor)
  * @param {string} fileId
  */
 function blockDownload_(fileId) {
@@ -150,8 +158,7 @@ function blockDownload_(fileId) {
             restrictedForWriters: true,
             restrictedForReaders: true
           }
-        },
-        writersCanShare: false
+        }
       },
       fileId
     );
@@ -160,6 +167,7 @@ function blockDownload_(fileId) {
     Logger.log(`Errore blocco download: ${e.message}`);
   }
 }
+
 
 /**
  * Verifica se un file è un video
@@ -196,16 +204,6 @@ function getFilesFromFolder(folderUrl) {
       const fileName = file.getName();
 
       debugInfo.push(`${fileName}\n  mimeType: ${mimeType}\n  isVideo: ${isVideo_(mimeType)}`);
-
-      // Blocca download per i video
-      if (isVideo_(mimeType)) {
-        try {
-          blockDownload_(fileId);
-          debugInfo[debugInfo.length - 1] += '\n  → Download BLOCCATO';
-        } catch (e) {
-          debugInfo[debugInfo.length - 1] += `\n  → ERRORE blocco: ${e.message}`;
-        }
-      }
 
       result.push({
         name: fileName,
@@ -256,17 +254,18 @@ function deleteMaterial(courseId, materialId) {
  */
 function createMaterialWithAttachments(courseId, topicId, lesson) {
   const title = formatDateForTitle_(lesson.date);
-  const description = buildMarker(lesson.lesson_id); // Solo marker nella descrizione
+  const description = buildMarker(lesson.lesson_id);
 
   const material = {
     title: title,
     description: description,
-    topicId: topicId,
-    state: 'PUBLISHED',
+    state: 'DRAFT',
     materials: []
   };
+  if (topicId) material.topicId = String(topicId);
 
   // Aggiungi file dalla cartella Drive
+  const videoFileIds = [];
   if (lesson.drive_folder_url) {
     const files = getFilesFromFolder(lesson.drive_folder_url);
     for (const file of files) {
@@ -276,13 +275,20 @@ function createMaterialWithAttachments(courseId, topicId, lesson) {
           shareMode: 'VIEW'
         }
       });
+      if (isVideo_(file.mimeType)) {
+        videoFileIds.push(file.id);
+      }
     }
   }
 
-  // Crea come DRAFT, poi pubblica (workaround per restrizioni API su certi corsi)
-  material.state = 'DRAFT';
+  // Crea materiale come DRAFT
   const created = Classroom.Courses.CourseWorkMaterials.create(material, courseId);
   Logger.log(`Materiale creato come DRAFT con ${material.materials.length} allegati: ${created.id}`);
+
+  // Blocca download sui video DOPO la creazione
+  for (const videoId of videoFileIds) {
+    blockDownload_(videoId);
+  }
 
   // Pubblica
   Classroom.Courses.CourseWorkMaterials.patch(
@@ -294,3 +300,4 @@ function createMaterialWithAttachments(courseId, topicId, lesson) {
   Logger.log(`Materiale pubblicato: ${created.id}`);
   return created.id;
 }
+

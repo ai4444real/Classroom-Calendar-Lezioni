@@ -14,7 +14,7 @@ const CONFIG = {
 
   // Intestazioni colonne per ogni foglio
   HEADERS: {
-    CHANNELS: ['target_key', 'classroom_course_id', 'calendar_id', 'label'],
+    CHANNELS: ['target_key', 'classroom_course_id', 'calendar_id', 'folder'],
     LESSONS: ['lesson_id', 'topic', 'event_title', 'date', 'start_time', 'end_time', 'targets', 'drive_folder_url', 'zoom_url'],
     LESSON_TARGETS: ['lesson_id', 'target_key', 'classroom_material_id', 'calendar_event_id', 'topic_id', 'published_at']
   },

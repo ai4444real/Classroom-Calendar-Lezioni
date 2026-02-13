@@ -79,15 +79,27 @@ Lo script cerca questo marker per capire se esiste già → aggiorna invece di d
 I file restano su Drive. Classroom contiene solo allegati (riferimenti), non copie.
 
 ### Video protetti
-I file video (`mimeType: video/*`) hanno download/copia/stampa bloccati automaticamente. Gli studenti possono solo visualizzare.
+I file video (`mimeType: video/*`) hanno download/copia/stampa bloccati tramite `downloadRestrictions` (Drive API v3). Gli studenti possono solo visualizzare in streaming.
+
+**Importante — `downloadRestrictions` vs `writersCanShare`:**
+- `downloadRestrictions` (restrictedForWriters + restrictedForReaders): blocca download/copia/stampa per TUTTI. È il lucchetto effettivo. Viene applicato DOPO la creazione del materiale Classroom.
+- `writersCanShare: false`: NON si usa. Blocca la condivisione da parte degli editor, ma impedisce anche a Classroom di allegare il file. Se applicato su file di altri proprietari, diventa irrevocabile (solo l'owner può toglierlo). Causa: errore "The caller does not have permission" sulla create del materiale.
+
+**Ordine delle operazioni (critico):**
+1. Crea materiale Classroom con allegati (Classroom condivide i file con gli studenti)
+2. DOPO → applica `blockDownload_` sui video (blocca download)
+
+Se invertito, `downloadRestrictions` potrebbe interferire con la capacità di Classroom di processare il file.
 
 ### Ricreazione materiale
 L'API Classroom non permette di modificare gli allegati dopo la creazione. Quindi:
-1. Trova materiale esistente (per marker)
-2. Lo cancella
-3. Lo ricrea con tutti gli allegati aggiornati
+1. Cerca TUTTI i materiali esistenti per marker (PUBLISHED + DRAFT)
+2. Li cancella tutti (previene bozze orfane)
+3. Ricrea con tutti gli allegati aggiornati
 
 L'ID materiale cambia, ma LessonTargets viene aggiornato.
+
+**Bozze orfane:** Se una creazione precedente fallisce dopo il DRAFT ma prima del PUBLISH, rimane una bozza. La ricerca include `courseWorkMaterialStates: ['PUBLISHED', 'DRAFT']` per trovarle e cancellarle.
 
 ### Feedback visivo
 Le celle vengono colorate di verde (#d9ead3) quando l'operazione ha successo:
@@ -142,6 +154,12 @@ Se qualcuno modifica `lesson_id` dopo la pubblicazione:
 - Validazione duplicati pre-esecuzione
 - Protezione colonna in Sheets
 - Auto-generazione ID
+
+### File di proprietà altrui
+Se un file video nella cartella Drive è di proprietà di un altro utente:
+- `blockDownload_` (solo `downloadRestrictions`) funziona se l'account ha accesso in modifica
+- NON impostare mai `writersCanShare: false` su file non propri: diventa irrevocabile
+- Se un file risulta già bloccato con `writersCanShare: false` da un giro precedente, solo il proprietario può sbloccarlo
 
 ---
 
