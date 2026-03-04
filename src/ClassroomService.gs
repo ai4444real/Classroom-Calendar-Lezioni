@@ -253,7 +253,7 @@ function deleteMaterial(courseId, materialId) {
  * @returns {string} materialId
  */
 function createMaterialWithAttachments(courseId, topicId, lesson) {
-  const title = formatDateForTitle_(lesson.date);
+  const title = formatDateForTitle_(lesson.data);
   const description = buildMarker(lesson.lesson_id);
 
   const material = {
@@ -266,8 +266,8 @@ function createMaterialWithAttachments(courseId, topicId, lesson) {
 
   // Aggiungi file dalla cartella Drive
   const videoFileIds = [];
-  if (lesson.drive_folder_url) {
-    const files = getFilesFromFolder(lesson.drive_folder_url);
+  if (lesson.url_cartella_drive) {
+    const files = getFilesFromFolder(lesson.url_cartella_drive);
     for (const file of files) {
       material.materials.push({
         driveFile: {

@@ -11,13 +11,13 @@ function buildEventDescription_(lesson) {
   const parts = [];
 
   // Topic come prima riga della descrizione
-  if (lesson.topic) {
-    parts.push(lesson.topic);
+  if (lesson.argomento) {
+    parts.push(lesson.argomento);
     parts.push('');
   }
 
-  if (lesson.zoom_url) {
-    parts.push(`Zoom: ${lesson.zoom_url}`);
+  if (lesson.url_zoom) {
+    parts.push(`Zoom: ${lesson.url_zoom}`);
   }
 
   // Marker per idempotenza (in fondo, con spazio)
@@ -34,7 +34,7 @@ function buildEventDescription_(lesson) {
  * @returns {boolean}
  */
 function canCreateEvent(lesson) {
-  return !!(lesson.date && lesson.start_time && lesson.end_time);
+  return !!(lesson.data && lesson.ora_inizio && lesson.ora_fine);
 }
 
 /**
@@ -105,13 +105,13 @@ function createCalendarEvent(calendarId, lesson, titleSuffix) {
     throw new Error(`Calendario non trovato: ${calendarId}`);
   }
 
-  let title = lesson.event_title || lesson.topic;
+  let title = lesson.titolo_evento || lesson.argomento;
   if (titleSuffix) title += ` (${titleSuffix})`;
   const description = buildEventDescription_(lesson);
 
   // Parsa data e orari
-  const startTime = parseDateTime_(lesson.date, lesson.start_time);
-  const endTime = parseDateTime_(lesson.date, lesson.end_time);
+  const startTime = parseDateTime_(lesson.data, lesson.ora_inizio);
+  const endTime = parseDateTime_(lesson.data, lesson.ora_fine);
 
   // Crea evento con orario
   const event = calendar.createEvent(title, startTime, endTime, {
@@ -119,7 +119,7 @@ function createCalendarEvent(calendarId, lesson, titleSuffix) {
   });
 
   const eventId = event.getId();
-  Logger.log(`Evento creato: ${eventId} - "${title}" ${lesson.start_time}-${lesson.end_time}`);
+  Logger.log(`Evento creato: ${eventId} - "${title}" ${lesson.ora_inizio}-${lesson.ora_fine}`);
   return eventId;
 }
 
@@ -130,7 +130,7 @@ function createCalendarEvent(calendarId, lesson, titleSuffix) {
  * @param {string|null} titleSuffix - Testo da aggiungere tra parentesi (calendari secondari)
  */
 function updateCalendarEvent(event, lesson, titleSuffix) {
-  let title = lesson.event_title || lesson.topic;
+  let title = lesson.titolo_evento || lesson.argomento;
   if (titleSuffix) title += ` (${titleSuffix})`;
   const description = buildEventDescription_(lesson);
 
@@ -138,8 +138,8 @@ function updateCalendarEvent(event, lesson, titleSuffix) {
   event.setDescription(description);
 
   // Aggiorna orari
-  const startTime = parseDateTime_(lesson.date, lesson.start_time);
-  const endTime = parseDateTime_(lesson.date, lesson.end_time);
+  const startTime = parseDateTime_(lesson.data, lesson.ora_inizio);
+  const endTime = parseDateTime_(lesson.data, lesson.ora_fine);
   event.setTime(startTime, endTime);
 
   Logger.log(`Evento aggiornato: ${event.getId()}`);

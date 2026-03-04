@@ -194,8 +194,8 @@ function testReadData() {
     const lessons = getLessons();
     results.push(`✓ Lessons: ${lessons.length} righe`);
     lessons.forEach(l => {
-      const targets = parseTargets(l.targets);
-      results.push(`  - ${l.lesson_id}: [${l.topic}] ${l.date} → targets: [${targets.join(', ')}]`);
+      const targets = parseTargets(l.destinatari);
+      results.push(`  - ${l.lesson_id}: [${l.argomento}] ${l.data} → destinatari: [${targets.join(', ')}]`);
     });
   } catch (e) {
     results.push(`✗ Lessons ERRORE: ${e.message}`);
@@ -264,7 +264,7 @@ function publishMaterialSelected() {
 
   // Feedback visivo + report
   showResults_(allResults, {
-    successColumns: ['drive_folder_url'],
+    successColumns: ['url_cartella_drive'],
     successCondition: r => r.success,
     operationLabel: 'Pubblicazione'
   });
@@ -276,7 +276,7 @@ function publishMaterialSelected() {
  * @returns {Object[]} Array di risultati per ogni target
  */
 function publishMaterial(lesson) {
-  const targetKeys = parseTargets(lesson.targets);
+  const targetKeys = parseTargets(lesson.destinatari);
   const results = [];
 
   if (targetKeys.length === 0) {
@@ -332,9 +332,9 @@ function publishMaterialToTarget_(lesson, targetKey) {
 
     // Se non abbiamo un topic, crealo/trovalo
     if (!topicId) {
-      topicId = ensureTopic(courseId, lesson.topic);
+      topicId = ensureTopic(courseId, lesson.argomento);
       if (!topicId) {
-        result.error = 'Colonna "topic" vuota — inserisci un argomento prima di pubblicare';
+        result.error = 'Colonna "argomento" vuota — inserisci un argomento prima di pubblicare';
         return result;
       }
     }
@@ -358,7 +358,7 @@ function publishMaterialToTarget_(lesson, targetKey) {
     });
 
     // Conta file allegati per il messaggio
-    const fileCount = lesson.drive_folder_url ? getFilesFromFolder(lesson.drive_folder_url).length : 0;
+    const fileCount = lesson.url_cartella_drive ? getFilesFromFolder(lesson.url_cartella_drive).length : 0;
     result.success = true;
     result.action = existingMaterials.length > 0
       ? `ricreato con ${fileCount} file`
@@ -393,7 +393,7 @@ function createDriveFolderSelected() {
 
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.LESSONS);
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const folderUrlColIndex = headers.indexOf('drive_folder_url') + 1;
+  const folderUrlColIndex = headers.indexOf('url_cartella_drive') + 1;
 
   const allResults = [];
   for (const lesson of lessons) {
@@ -412,7 +412,7 @@ function createDriveFolderSelected() {
   }
 
   showResults_(allResults, {
-    successColumns: ['drive_folder_url'],
+    successColumns: ['url_cartella_drive'],
     successCondition: r => r.success,
     operationLabel: 'Creazione cartelle'
   });
@@ -428,19 +428,19 @@ function createDriveFolder_(lesson) {
 
   try {
     // Skip se drive_folder_url già presente
-    if (lesson.drive_folder_url) {
+    if (lesson.url_cartella_drive) {
       result.success = true;
       result.action = 'cartella già presente';
       return result;
     }
 
-    if (!lesson.date) {
+    if (!lesson.data) {
       result.error = 'Data mancante';
       return result;
     }
 
     // Primo target → nome cartella corso
-    const targetKeys = parseTargets(lesson.targets);
+    const targetKeys = parseTargets(lesson.destinatari);
     if (targetKeys.length === 0) {
       result.error = 'Nessun target specificato';
       return result;
@@ -456,7 +456,7 @@ function createDriveFolder_(lesson) {
     result.folderName = courseFolderName;
 
     // Anno dalla data della lezione
-    const date = new Date(lesson.date);
+    const date = new Date(lesson.data);
     const year = date.getFullYear();
     const dateFolderName = formatDateForFolder_(date);
 
@@ -525,7 +525,7 @@ function showResults_(allResults, options) {
   if (!sheet) return;
 
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const targetsColIndex = headers.indexOf('targets') + 1;
+  const targetsColIndex = headers.indexOf('destinatari') + 1;
 
   for (const lr of allResults) {
     if (!lr.rowIndex) continue;
@@ -630,7 +630,7 @@ function createEventSelected() {
 
   // Feedback visivo + report
   showResults_(allResults, {
-    successColumns: ['date', 'start_time', 'end_time'],
+    successColumns: ['data', 'ora_inizio', 'ora_fine'],
     successCondition: r => r.success && (r.action === 'creato' || r.action === 'aggiornato'),
     operationLabel: 'Creazione eventi'
   });
@@ -642,7 +642,7 @@ function createEventSelected() {
  * @returns {Object[]} Array di risultati per ogni target
  */
 function createEvents(lesson) {
-  const targetKeys = parseTargets(lesson.targets);
+  const targetKeys = parseTargets(lesson.destinatari);
   const results = [];
 
   if (targetKeys.length === 0) {
@@ -679,7 +679,7 @@ function createEventToTarget_(lesson, targetKey, titleSuffix) {
     // 0. Verifica dati obbligatori (date, start_time, end_time)
     if (!canCreateEvent(lesson)) {
       result.success = true;
-      result.action = 'saltato (manca date/start_time/end_time)';
+      result.action = 'saltato (manca data/ora_inizio/ora_fine)';
       return result;
     }
 
@@ -699,7 +699,7 @@ function createEventToTarget_(lesson, targetKey, titleSuffix) {
     }
 
     // 2. Cerca evento esistente per marker (idempotenza)
-    const existingEvent = findEventByMarker(calendarId, lesson.lesson_id, lesson.date);
+    const existingEvent = findEventByMarker(calendarId, lesson.lesson_id, lesson.data);
     if (existingEvent) {
       updateCalendarEvent(existingEvent, lesson, titleSuffix);
       // Salva/aggiorna mapping
