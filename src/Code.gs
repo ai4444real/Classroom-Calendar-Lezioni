@@ -460,9 +460,13 @@ function createDriveFolder_(lesson) {
     const year = date.getFullYear();
     const dateFolderName = formatDateForFolder_(date);
 
-    // Struttura: root > Lezioni {anno} > {corso} > yyyymmdd
-    const root = DriveApp.getRootFolder();
-    const yearFolder = findOrCreateFolder_(root, 'Lezioni ' + year);
+    // Struttura: Lezioni {anno} > {corso} > yyyymmdd
+    // Se DRIVE_ROOT_FOLDER_ID è impostato, punta direttamente alla cartella "Lezioni {anno}" di X:
+    // i sottocartelle vengono create lì, non nel Drive di chi esegue.
+    // Aggiornare l'ID ogni anno. Senza ID: usa il Mio Drive dell'utente corrente.
+    const yearFolder = CONFIG.DRIVE_ROOT_FOLDER_ID
+      ? DriveApp.getFolderById(CONFIG.DRIVE_ROOT_FOLDER_ID)
+      : findOrCreateFolder_(DriveApp.getRootFolder(), 'Lezioni ' + year);
     const courseFolder = findOrCreateFolder_(yearFolder, courseFolderName);
     const dateFolder = findOrCreateFolder_(courseFolder, dateFolderName);
 
@@ -645,8 +649,16 @@ function createEvents(lesson) {
     return [{ targetKey: '(nessuno)', success: false, error: 'Nessun target specificato' }];
   }
 
-  for (const targetKey of targetKeys) {
-    const result = createEventToTarget_(lesson, targetKey);
+  for (let i = 0; i < targetKeys.length; i++) {
+    // Per i target secondari, aggiungi il nome corso (folder) al titolo evento
+    let titleSuffix = null;
+    if (i > 0) {
+      const channel = getChannel(targetKeys[i]);
+      if (channel && channel.folder) {
+        titleSuffix = channel.folder;
+      }
+    }
+    const result = createEventToTarget_(lesson, targetKeys[i], titleSuffix);
     results.push(result);
   }
 
@@ -657,9 +669,10 @@ function createEvents(lesson) {
  * Crea evento su un singolo target
  * @param {Object} lesson
  * @param {string} targetKey
+ * @param {string|null} titleSuffix - Testo da aggiungere tra parentesi al titolo (per calendari secondari)
  * @returns {Object} Risultato
  */
-function createEventToTarget_(lesson, targetKey) {
+function createEventToTarget_(lesson, targetKey, titleSuffix) {
   const result = { targetKey: targetKey, success: false };
 
   try {
@@ -688,7 +701,7 @@ function createEventToTarget_(lesson, targetKey) {
     // 2. Cerca evento esistente per marker (idempotenza)
     const existingEvent = findEventByMarker(calendarId, lesson.lesson_id, lesson.date);
     if (existingEvent) {
-      updateCalendarEvent(existingEvent, lesson);
+      updateCalendarEvent(existingEvent, lesson, titleSuffix);
       // Salva/aggiorna mapping
       saveLessonTarget({
         lesson_id: lesson.lesson_id,
@@ -701,7 +714,7 @@ function createEventToTarget_(lesson, targetKey) {
     }
 
     // 3. Crea nuovo evento
-    const eventId = createCalendarEvent(calendarId, lesson);
+    const eventId = createCalendarEvent(calendarId, lesson, titleSuffix);
 
     // 4. Salva mapping
     saveLessonTarget({

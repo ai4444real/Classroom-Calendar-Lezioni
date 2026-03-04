@@ -96,15 +96,17 @@ function findEventByMarker(calendarId, lessonId, date) {
  * Crea un nuovo evento nel calendario
  * @param {string} calendarId
  * @param {Object} lesson
+ * @param {string|null} titleSuffix - Testo da aggiungere tra parentesi (calendari secondari)
  * @returns {string} eventId
  */
-function createCalendarEvent(calendarId, lesson) {
+function createCalendarEvent(calendarId, lesson, titleSuffix) {
   const calendar = CalendarApp.getCalendarById(calendarId);
   if (!calendar) {
     throw new Error(`Calendario non trovato: ${calendarId}`);
   }
 
-  const title = lesson.event_title || lesson.topic;
+  let title = lesson.event_title || lesson.topic;
+  if (titleSuffix) title += ` (${titleSuffix})`;
   const description = buildEventDescription_(lesson);
 
   // Parsa data e orari
@@ -125,9 +127,11 @@ function createCalendarEvent(calendarId, lesson) {
  * Aggiorna un evento esistente
  * @param {GoogleAppsScript.Calendar.CalendarEvent} event
  * @param {Object} lesson
+ * @param {string|null} titleSuffix - Testo da aggiungere tra parentesi (calendari secondari)
  */
-function updateCalendarEvent(event, lesson) {
-  const title = lesson.event_title || lesson.topic;
+function updateCalendarEvent(event, lesson, titleSuffix) {
+  let title = lesson.event_title || lesson.topic;
+  if (titleSuffix) title += ` (${titleSuffix})`;
   const description = buildEventDescription_(lesson);
 
   event.setTitle(title);

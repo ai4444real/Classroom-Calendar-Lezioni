@@ -5,6 +5,13 @@
 const CONFIG = {
   // Debug mode: mostra alert dettagliati
   DEBUG: false,
+
+  // ID della cartella "Lezioni {anno}" nel Mio Drive di X.
+  // Lo script la usa direttamente come cartella anno, quindi crea {corso}/yyyymmdd al suo interno.
+  // Aggiornare ogni anno con l'ID della nuova cartella "Lezioni {anno}".
+  // Se vuoto: usa il Mio Drive dell'utente che esegue (comportamento originale).
+  DRIVE_ROOT_FOLDER_ID: '1NB4UFzVEKIeVYa6tMUn8J9ELjyFNrM6Q',
+
   // Nomi dei fogli nello Sheet
   SHEETS: {
     CHANNELS: 'Corsi',
