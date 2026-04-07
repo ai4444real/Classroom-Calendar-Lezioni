@@ -33,6 +33,8 @@ function onOpen() {
     .addItem('Crea Evento Calendario', 'createEventSelected')
     .addItem('Pubblica Materiale', 'publishMaterialSelected')
     .addSeparator()
+    .addItem('Archivia lezioni passate', 'archivePastLessons')
+    .addSeparator()
     .addSubMenu(ui.createMenu('Setup & Test')
       .addItem('Crea fogli SSOT', 'setupSheets')
       .addItem('Test connessione API', 'testConnection')
@@ -228,6 +230,22 @@ function testReadData() {
 }
 
 /**
+ * Diagnostica: verifica se un topic_id è valido per un corso Classroom
+ * Modifica courseId e topicId prima di eseguire
+ */
+function testTopic() {
+  const courseId = '832224466541';   // PRACTITIONER
+  const topicId  = '846364680695';   // topic_id da LessonTargets
+
+  try {
+    const topic = Classroom.Courses.Topics.get(courseId, topicId);
+    Logger.log('Topic OK: ' + topic.name + ' (id: ' + topic.topicId + ')');
+  } catch (e) {
+    Logger.log('Topic NON trovato: ' + e.message);
+  }
+}
+
+/**
  * Pubblica Materiale per righe selezionate
  * Crea/ricrea Materiale con tutti i file dalla cartella Drive
  */
@@ -318,11 +336,13 @@ function publishMaterialToTarget_(lesson, targetKey) {
 
     // 2. Trova materiali esistenti (PUBLISHED + DRAFT) e il topic
     let topicId = null;
+    let topicFromCache = false;
     const existingTarget = getLessonTarget(lesson.lesson_id, targetKey);
     const existingMaterials = findMaterialsByMarker(courseId, lesson.lesson_id);
 
     if (existingTarget && existingTarget.topic_id) {
       topicId = existingTarget.topic_id;
+      topicFromCache = true;
     }
 
     // Prendi topicId dal primo materiale esistente (se presente)
@@ -345,8 +365,21 @@ function publishMaterialToTarget_(lesson, targetKey) {
       Logger.log(`Materiale esistente cancellato (${mat.state}): ${mat.id}`);
     }
 
-    // 4. Crea nuovo materiale con tutti gli allegati dalla cartella
-    const newMaterialId = createMaterialWithAttachments(courseId, topicId, lesson);
+    // 4. Crea nuovo materiale — se fallisce per topic_id stale, rigenera e riprova
+    let newMaterialId;
+    try {
+      newMaterialId = createMaterialWithAttachments(courseId, topicId, lesson);
+    } catch (apiErr) {
+      if (topicFromCache && apiErr.message.includes('invalid argument')) {
+        Logger.log(`topic_id stale (${topicId}), rigenero per "${lesson.argomento}"...`);
+        topicId = ensureTopic(courseId, lesson.argomento);
+        if (!topicId) throw new Error('Impossibile rigenerare il topic — colonna "argomento" vuota');
+        newMaterialId = createMaterialWithAttachments(courseId, topicId, lesson);
+        Logger.log(`Retry riuscito con nuovo topic_id: ${topicId}`);
+      } else {
+        throw apiErr;
+      }
+    }
 
     // 5. Aggiorna LessonTargets con nuovo ID
     saveLessonTarget({
@@ -508,6 +541,49 @@ function formatDateForFolder_(date) {
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
   return yyyy + mm + dd;
+}
+
+// ============================================================
+// ARCHIVIAZIONE VISIVA
+// ============================================================
+
+/**
+ * Rende grigie le righe con data < oggi, nere quelle con data >= oggi.
+ * Idempotente: si può eseguire più volte senza effetti collaterali.
+ * Non tocca i colori di sfondo (celle verdi di successo restano intatte).
+ */
+function archivePastLessons() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.LESSONS);
+  if (!sheet) return;
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const dateCol = headers.indexOf('data') + 1;
+  if (dateCol < 1) return;
+
+  const numRows = lastRow - 1; // escludi header
+  const numCols = sheet.getLastColumn();
+
+  const dates = sheet.getRange(2, dateCol, numRows, 1).getValues();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const GREY = '#aaaaaa';
+  const BLACK = '#000000';
+
+  // Costruisci array di colori riga per riga
+  const colors = dates.map(([dateVal]) => {
+    const d = dateVal ? new Date(dateVal) : null;
+    const isPast = d && d < today;
+    const rowColor = isPast ? GREY : BLACK;
+    return Array(numCols).fill(rowColor);
+  });
+
+  sheet.getRange(2, 1, numRows, numCols).setFontColors(colors);
+
+  SpreadsheetApp.getUi().alert(`Fatto: righe aggiornate (${numRows} lezioni).`);
 }
 
 // ============================================================
@@ -698,25 +774,43 @@ function createEventToTarget_(lesson, targetKey, titleSuffix) {
       return result;
     }
 
-    // 2. Cerca evento esistente per marker (idempotenza)
-    const existingEvent = findEventByMarker(calendarId, lesson.lesson_id, lesson.data);
-    if (existingEvent) {
-      updateCalendarEvent(existingEvent, lesson, titleSuffix);
-      // Salva/aggiorna mapping
-      saveLessonTarget({
-        lesson_id: lesson.lesson_id,
-        target_key: targetKey,
-        calendar_event_id: existingEvent.getId()
-      });
-      result.success = true;
-      result.action = 'aggiornato';
-      return result;
+    const calendar = CalendarApp.getCalendarById(calendarId);
+    if (!calendar) throw new Error(`Calendario non trovato: ${calendarId}`);
+
+    // 2. Cerca evento per ID in LessonTargets (funziona anche se cambia la data)
+    let existingEvent = null;
+    const existingTarget = getLessonTarget(lesson.lesson_id, targetKey);
+    if (existingTarget && existingTarget.calendar_event_id) {
+      const eventId = existingTarget.calendar_event_id;
+      if (isCalendarEventActive_(calendarId, eventId)) {
+        existingEvent = calendar.getEventById(eventId);
+      }
     }
 
-    // 3. Crea nuovo evento
-    const eventId = createCalendarEvent(calendarId, lesson, titleSuffix);
+    // Fallback: cerca per marker (per eventi creati prima di questa versione)
+    if (!existingEvent) {
+      existingEvent = findEventByMarker(calendarId, lesson.lesson_id, lesson.data);
+    }
 
-    // 4. Salva mapping
+    if (existingEvent) {
+      try {
+        updateCalendarEvent(existingEvent, lesson, titleSuffix);
+        saveLessonTarget({
+          lesson_id: lesson.lesson_id,
+          target_key: targetKey,
+          calendar_event_id: existingEvent.getId()
+        });
+        result.success = true;
+        result.action = 'aggiornato';
+        return result;
+      } catch (updateErr) {
+        // Evento non aggiornabile (soft-deleted): ricrea
+        Logger.log(`Evento non aggiornabile, verrà ricreato: ${updateErr.message}`);
+      }
+    }
+
+    // 3. Crea nuovo evento (prima creazione o dopo cancellazione)
+    const eventId = createCalendarEvent(calendarId, lesson, titleSuffix);
     saveLessonTarget({
       lesson_id: lesson.lesson_id,
       target_key: targetKey,
@@ -724,8 +818,8 @@ function createEventToTarget_(lesson, targetKey, titleSuffix) {
     });
 
     result.success = true;
-    result.action = 'creato';
-    Logger.log(`Evento creato: ${lesson.lesson_id} / ${targetKey} → ${eventId}`);
+    result.action = existingEvent ? 'ricreato' : 'creato';
+    Logger.log(`Evento ${result.action}: ${lesson.lesson_id} / ${targetKey} → ${eventId}`);
 
   } catch (e) {
     result.error = e.message;

@@ -130,18 +130,24 @@ function getLessonsBySelectedRows() {
     return [];
   }
 
-  const lessons = getLessons();
-  const selectedLessons = [];
+  // Leggi lesson_id dalle celle fisiche, saltando le righe nascoste dal filtro
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const lessonIdCol = headers.indexOf('lesson_id') + 1;
+  if (lessonIdCol < 1) return [];
 
-  for (let row = startRow; row < startRow + numRows; row++) {
-    const lesson = lessons.find(l => l._rowIndex === row);
-    // Salta righe vuote (senza lesson_id)
-    if (lesson && lesson.lesson_id) {
-      selectedLessons.push(lesson);
+  const allIds = sheet.getRange(startRow, lessonIdCol, numRows, 1).getValues().flat();
+  const selectedIds = [];
+  for (let i = 0; i < numRows; i++) {
+    const row = startRow + i;
+    if (!sheet.isRowHiddenByFilter(row) && !sheet.isRowHiddenByUser(row) && allIds[i] !== '') {
+      selectedIds.push(allIds[i]);
     }
   }
 
-  return selectedLessons;
+  const lessons = getLessons();
+  return selectedIds
+    .map(id => lessons.find(l => String(l.lesson_id) === String(id)))
+    .filter(Boolean);
 }
 
 /**

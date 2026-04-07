@@ -3,6 +3,52 @@
  */
 
 /**
+ * Costruisce il titolo dell'evento: "Titolo [docente tutor]" con suffisso opzionale
+ * @param {Object} lesson
+ * @param {string|null} titleSuffix
+ * @returns {string}
+ */
+function buildEventTitle_(lesson, titleSuffix) {
+  const base = lesson.titolo_evento || lesson.argomento;
+  const docente = lesson.docente || '  ';
+  const tutor = lesson.tutor || '  ';
+  let title = `${base} [${docente} ${tutor}]`;
+  if (titleSuffix) title += ` (${titleSuffix})`;
+  return title;
+}
+
+/**
+ * Verifica se un evento (identificato dall'iCalUID restituito da event.getId())
+ * esiste ancora nel calendario e non è cancellato/nel cestino.
+ * @param {string} calendarId
+ * @param {string} iCalUID - da event.getId()
+ * @returns {boolean}
+ */
+function isCalendarEventActive_(calendarId, iCalUID) {
+  try {
+    const token = ScriptApp.getOAuthToken();
+    const url = 'https://www.googleapis.com/calendar/v3/calendars/'
+      + encodeURIComponent(calendarId) + '/events'
+      + '?iCalUID=' + encodeURIComponent(iCalUID) + '&maxResults=1';
+    const res = UrlFetchApp.fetch(url, {
+      headers: { 'Authorization': 'Bearer ' + token },
+      muteHttpExceptions: true
+    });
+    const code = res.getResponseCode();
+    if (code !== 200) {
+      Logger.log('isCalendarEventActive_ HTTP ' + code + ' — assume attivo');
+      return true; // su errore API, assume attivo (meglio aggiornare che duplicare)
+    }
+    const items = JSON.parse(res.getContentText()).items || [];
+    // senza showDeleted=true, gli eventi cancellati non compaiono → items vuoto = cancellato
+    return items.length > 0;
+  } catch (e) {
+    Logger.log('isCalendarEventActive_ errore: ' + e.message + ' — assume attivo');
+    return true;
+  }
+}
+
+/**
  * Costruisce la descrizione dell'evento (topic + Zoom + marker)
  * @param {Object} lesson
  * @returns {string}
@@ -105,8 +151,7 @@ function createCalendarEvent(calendarId, lesson, titleSuffix) {
     throw new Error(`Calendario non trovato: ${calendarId}`);
   }
 
-  let title = lesson.titolo_evento || lesson.argomento;
-  if (titleSuffix) title += ` (${titleSuffix})`;
+  const title = buildEventTitle_(lesson, titleSuffix);
   const description = buildEventDescription_(lesson);
 
   // Parsa data e orari
@@ -130,8 +175,7 @@ function createCalendarEvent(calendarId, lesson, titleSuffix) {
  * @param {string|null} titleSuffix - Testo da aggiungere tra parentesi (calendari secondari)
  */
 function updateCalendarEvent(event, lesson, titleSuffix) {
-  let title = lesson.titolo_evento || lesson.argomento;
-  if (titleSuffix) title += ` (${titleSuffix})`;
+  const title = buildEventTitle_(lesson, titleSuffix);
   const description = buildEventDescription_(lesson);
 
   event.setTitle(title);
